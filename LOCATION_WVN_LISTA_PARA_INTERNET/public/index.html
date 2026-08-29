@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="LOCATION WVN — plataforma de rastreo GPS preciso y seguro.">
+<meta name="robots" content="index,follow">
+<title>LOCATION WVN — Rastreo GPS</title>
+<link rel="icon" href="/public/logo.jpeg">
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:radial-gradient(circle at 50% 0,#102c4c 0,#071421 48%,#040b13 100%);color:#eef6ff;font-family:Inter,Arial,sans-serif;display:grid;place-items:center;padding:24px}
+.card{width:min(460px,100%);background:rgba(8,24,41,.96);border:1px solid rgba(74,159,226,.28);border-radius:24px;padding:30px;box-shadow:0 30px 90px rgba(0,0,0,.48)}
+.logo{display:block;width:210px;height:210px;object-fit:contain;margin:0 auto 8px;border-radius:18px}
+.tag{text-align:center;color:#91a9c5;margin:0 0 26px}
+h1{font-size:26px;margin:0 0 8px}.desc{color:#9db1ca;font-size:14px;line-height:1.5}
+label{display:block;margin:16px 0 7px;color:#b5c5d8;font-size:13px;font-weight:700}
+input{width:100%;padding:14px 15px;border:1px solid #2b4763;border-radius:11px;background:#071523;color:#fff;font-size:16px;outline:none}
+input:focus{border-color:#31c5f2;box-shadow:0 0 0 3px rgba(49,197,242,.09)}
+button{font:inherit}.primary{width:100%;padding:14px;border:0;border-radius:11px;margin-top:18px;background:linear-gradient(90deg,#21c8e8,#2b7ff3);color:white;font-weight:800;cursor:pointer}
+.primary:disabled{opacity:.55;cursor:not-allowed}.link{display:block;background:none;border:0;color:#54cafa;margin:16px auto 0;cursor:pointer}
+.hidden{display:none!important}.msg{margin-top:16px;padding:12px 13px;border-radius:10px;font-size:13px;background:#10283f;color:#d9e8f7}
+.ok{background:#0b362b;color:#8beabf}.err{background:#40202a;color:#ffb3bf}
+.verified{text-align:center;padding:24px 4px}.check{font-size:52px}.verified h2{margin:8px 0}.small{font-size:12px;color:#70869f;text-align:center;margin-top:18px}
+</style>
+</head>
+<body>
+<main class="card">
+  <img class="logo" src="/public/logo.jpeg" alt="LOCATION WVN">
+  <p class="tag">Rastreo GPS Preciso y Seguro</p>
+
+  <section id="stepEmail">
+    <h1>Crear cuenta</h1>
+    <p class="desc">Ingresa cualquier correo válido. Te enviaremos un código de 6 dígitos.</p>
+    <label for="email">Correo electrónico</label>
+    <input id="email" type="email" autocomplete="email" placeholder="tu@correo.com">
+    <button id="sendBtn" class="primary">ENVIAR CÓDIGO</button>
+  </section>
+
+  <section id="stepCode" class="hidden">
+    <h1>Verifica tu correo</h1>
+    <p class="desc">Enviamos el código a <strong id="emailShown"></strong>.</p>
+    <label for="code">Código de 6 dígitos</label>
+    <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456">
+    <button id="verifyBtn" class="primary">VERIFICAR</button>
+    <button id="resendBtn" class="link">Reenviar código</button>
+    <button id="changeBtn" class="link">Cambiar correo</button>
+  </section>
+
+  <section id="stepDone" class="verified hidden">
+    <div class="check">✓</div>
+    <h2>Correo verificado</h2>
+    <p class="desc">La verificación fue completada correctamente.</p>
+  </section>
+
+  <div id="msg" class="msg hidden"></div>
+  <div class="small">LOCATION WVN</div>
+</main>
+
+<script>
+const $=id=>document.getElementById(id);
+let currentEmail="", challenge="";
+
+function showMsg(text,type=""){
+  const el=$("msg"); el.textContent=text; el.className="msg "+(type||"");
+}
+function hideMsg(){$("msg").className="msg hidden"}
+function setBusy(btn,busy,label){
+  btn.disabled=busy; btn.textContent=busy?"PROCESANDO…":label;
+}
+async function sendCode(){
+  currentEmail=$("email").value.trim().toLowerCase();
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(currentEmail)){
+    return showMsg("Introduce un correo válido.","err");
+  }
+  setBusy($("sendBtn"),true,"ENVIAR CÓDIGO");
+  try{
+    const r=await fetch("/api/send-code",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:currentEmail})});
+    const d=await r.json();
+    if(!r.ok) throw new Error(d.message||"No se pudo enviar el código.");
+    challenge=d.challenge;
+    $("emailShown").textContent=currentEmail;
+    $("stepEmail").classList.add("hidden");
+    $("stepCode").classList.remove("hidden");
+    $("code").value=""; $("code").focus();
+    showMsg(d.message,"ok");
+  }catch(e){showMsg(e.message||"Error inesperado.","err")}
+  finally{setBusy($("sendBtn"),false,"ENVIAR CÓDIGO")}
+}
+async function verifyCode(){
+  const code=$("code").value.trim();
+  if(!/^\d{6}$/.test(code)) return showMsg("Introduce los 6 dígitos.","err");
+  setBusy($("verifyBtn"),true,"VERIFICAR");
+  try{
+    const r=await fetch("/api/verify-code",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:currentEmail,code,challenge})});
+    const d=await r.json();
+    if(!r.ok) throw new Error(d.message||"Código incorrecto.");
+    sessionStorage.setItem("location_wvn_verification",d.verificationToken||"");
+    $("stepCode").classList.add("hidden");
+    $("stepDone").classList.remove("hidden");
+    showMsg(d.message,"ok");
+  }catch(e){showMsg(e.message||"Error inesperado.","err")}
+  finally{setBusy($("verifyBtn"),false,"VERIFICAR")}
+}
+$("sendBtn").onclick=sendCode;
+$("verifyBtn").onclick=verifyCode;
+$("resendBtn").onclick=sendCode;
+$("changeBtn").onclick=()=>{
+  $("stepCode").classList.add("hidden"); $("stepEmail").classList.remove("hidden");
+  $("code").value=""; challenge=""; hideMsg(); $("email").focus();
+};
+$("code").oninput=()=>{$("code").value=$("code").value.replace(/\D/g,"").slice(0,6)};
+</script>
+</body>
+</html>
